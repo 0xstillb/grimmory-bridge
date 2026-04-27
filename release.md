@@ -27,6 +27,11 @@ Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
 - `README_EMBEDDED_METADATA.md`
 - tests for the metadata pipeline
 
+## Download Options
+
+- `Grimmory-Bridge-1.0.0-windows.zip`: portable Python-based package
+- `Grimmory-Bridge-1.0.0-windows-exe.zip`: bundled Windows executable package
+
 ## Recommended Download / Usage Flow
 
 1. Download or clone the repository.
@@ -40,6 +45,7 @@ Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
 
 - The launcher prefers `pythonw.exe` for GUI startup when available.
 - A Windows release zip can be built with `build_release_package.ps1`.
+- A bundled Windows executable zip can be built with `build_windows_exe.ps1`.
 - Sidecar naming follows Grimmory conventions:
   - `BookName.metadata.json`
   - `BookName.cover.jpg`

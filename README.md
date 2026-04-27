@@ -141,3 +141,35 @@ To build the Windows release zip locally:
 This creates:
 
 - `dist/Grimmory-Bridge-1.0.0-windows.zip`
+
+## Windows EXE Package
+
+The GitHub Releases page can also include a bundled Windows executable package:
+
+- `Grimmory-Bridge-1.0.0-windows-exe.zip`
+
+That package does not need a separate Python install for normal use.
+
+After extracting it:
+
+1. Open the `Grimmory Bridge` folder.
+2. Run `Grimmory Bridge.exe`.
+3. Keep the `_internal` folder beside the `.exe`.
+
+To build the executable bundle locally:
+
+```powershell
+.\build_windows_exe.ps1
+```
+
+If auto-detection picks the wrong Python, point the build script at a working runtime first:
+
+```powershell
+$env:GB_BUILD_PYTHON = 'C:\Users\you\AppData\Local\Programs\Python\Python313\python.exe'
+.\build_windows_exe.ps1
+```
+
+This creates:
+
+- `dist/Grimmory Bridge\Grimmory Bridge.exe`
+- `dist/Grimmory-Bridge-1.0.0-windows-exe.zip`
