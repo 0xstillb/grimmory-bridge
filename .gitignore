@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.tmp-tests/
+tmp_*.pdf
+tmp_*.xmp
+
+local-only-docs/
+ui-ux-pro-max-install/
+grimmory/
+UI_REFINEMENT_HANDOFF.md
+
+.DS_Store
+Thumbs.db
