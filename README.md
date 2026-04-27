@@ -26,17 +26,30 @@ It is designed for libraries where books and metadata share the same stem, for e
 - `opf_to_embedded_metadata.py`: main app and GUI
 - `opf_to_grimmory_json.py`: OPF parsing and Grimmory sidecar helpers
 - `opf_to_embedded_metadata.bat`: Windows launcher
+- `grimmory_bridge.bat`: friendly project launcher
+- `setup_grimmory_bridge.bat`: one-step dependency installer
 - `README_EMBEDDED_METADATA.md`: detailed metadata behavior notes
 - `release.md`: release packaging and publishing notes
 
 ## Quick Start
 
-### Windows GUI
+## Requirements
 
-Double-click `opf_to_embedded_metadata.bat` or run:
+- Windows with Python 3 available as `py` or `python`
+- Required packages from `requirements.txt`
+
+Install dependencies with:
 
 ```powershell
-.\opf_to_embedded_metadata.bat
+.\setup_grimmory_bridge.bat
+```
+
+### Windows GUI
+
+Double-click `grimmory_bridge.bat` or run:
+
+```powershell
+.\grimmory_bridge.bat
 ```
 
 With no arguments, Grimmory Bridge opens the GUI and lets you:
@@ -49,19 +62,19 @@ With no arguments, Grimmory Bridge opens the GUI and lets you:
 ### Dry Run
 
 ```powershell
-.\opf_to_embedded_metadata.bat --root "D:\Books"
+.\grimmory_bridge.bat --root "D:\Books"
 ```
 
 ### Write Changes
 
 ```powershell
-.\opf_to_embedded_metadata.bat --root "D:\Books" --write
+.\grimmory_bridge.bat --root "D:\Books" --write
 ```
 
 ### Inspect One File
 
 ```powershell
-.\opf_to_embedded_metadata.bat --inspect "D:\Books\Novel\Book.epub"
+.\grimmory_bridge.bat --inspect "D:\Books\Novel\Book.epub"
 ```
 
 ## Runtime Behavior
@@ -116,3 +129,15 @@ Full `unittest` execution is currently blocked in this environment by Windows te
 ## Intended Use
 
 This repo is meant to be ready to clone, download, and run on Windows for OPF-driven EPUB/PDF metadata embedding plus Grimmory JSON sidecar generation.
+
+## Release Package
+
+To build the Windows release zip locally:
+
+```powershell
+.\build_release_package.ps1
+```
+
+This creates:
+
+- `dist/Grimmory-Bridge-1.0.0-windows.zip`

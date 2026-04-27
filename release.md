@@ -17,9 +17,12 @@ Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
 
 ## Included In This Release
 
+- `grimmory_bridge.bat`
+- `setup_grimmory_bridge.bat`
 - `opf_to_embedded_metadata.py`
 - `opf_to_grimmory_json.py`
 - `opf_to_embedded_metadata.bat`
+- `requirements.txt`
 - `README.md`
 - `README_EMBEDDED_METADATA.md`
 - tests for the metadata pipeline
@@ -27,14 +30,16 @@ Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
 ## Recommended Download / Usage Flow
 
 1. Download or clone the repository.
-2. On Windows, start with `opf_to_embedded_metadata.bat`.
-3. Use dry-run first.
-4. Review the `Changes`, `Compatibility`, and `JSON` sections.
-5. Run again with write mode when the preview looks correct.
+2. Run `setup_grimmory_bridge.bat` once to install Python dependencies.
+3. On Windows, start with `grimmory_bridge.bat`.
+4. Use dry-run first.
+5. Review the `Changes`, `Compatibility`, and `JSON` sections.
+6. Run again with write mode when the preview looks correct.
 
 ## Notes
 
 - The launcher prefers `pythonw.exe` for GUI startup when available.
+- A Windows release zip can be built with `build_release_package.ps1`.
 - Sidecar naming follows Grimmory conventions:
   - `BookName.metadata.json`
   - `BookName.cover.jpg`

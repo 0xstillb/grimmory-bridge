@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .tmp-tests/
+dist/
 tmp_*.pdf
 tmp_*.xmp
 
