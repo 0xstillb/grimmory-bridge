@@ -1,10 +1,21 @@
 # Release Notes
 
+## Grimmory Bridge 1.1.0
+
+### Fixed
+
+- PDF stale XMP metadata bug: PDFs edited by tools like Foxit PhantomPDF accumulate orphaned XMP Metadata stream objects through incremental saves. PDFium4j (used by Grimmory's Java backend) could read a stale empty XMP object instead of the catalog-referenced one, causing Series Name and ISBN to appear empty.
+- Added `_remove_stale_xmp_objects()` that nullifies all `/Type /Metadata` stream objects not referenced by the PDF catalog before writing new XMP.
+- PDFs processed by Grimmory Bridge now contain exactly one authoritative XMP packet.
+
+### Download Options
+
+- `Grimmory-Bridge-1.1.0-windows.zip`: portable Python-based package
+- `Grimmory-Bridge-1.1.0-windows-exe.zip`: bundled Windows executable (no Python required)
+
 ## Grimmory Bridge 1.0.0
 
-Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
-
-## Highlights
+### Highlights
 
 - Batch GUI for multi-folder processing
 - Dry-run and write modes
@@ -12,46 +23,9 @@ Initial GitHub-ready release of **Grimmory Bridge: OPF to Embedded and JSON**.
 - Grimmory `.metadata.json` sidecar generation
 - Grimmory `.cover.jpg` normalization
 - Compatibility summaries for KOReader, Grimmory, and Calibre
-- Cleaner `Changes` and `Compatibility` log sections
 - Detached GUI startup from the Windows `.bat` launcher
 
-## Included In This Release
-
-- `grimmory_bridge.bat`
-- `setup_grimmory_bridge.bat`
-- `opf_to_embedded_metadata.py`
-- `opf_to_grimmory_json.py`
-- `opf_to_embedded_metadata.bat`
-- `requirements.txt`
-- `README.md`
-- `README_EMBEDDED_METADATA.md`
-- tests for the metadata pipeline
-
-## Download Options
+### Download Options
 
 - `Grimmory-Bridge-1.0.0-windows.zip`: portable Python-based package
 - `Grimmory-Bridge-1.0.0-windows-exe.zip`: bundled Windows executable package
-
-## Recommended Download / Usage Flow
-
-1. Download or clone the repository.
-2. Run `setup_grimmory_bridge.bat` once to install Python dependencies.
-3. On Windows, start with `grimmory_bridge.bat`.
-4. Use dry-run first.
-5. Review the `Changes`, `Compatibility`, and `JSON` sections.
-6. Run again with write mode when the preview looks correct.
-
-## Notes
-
-- The launcher prefers `pythonw.exe` for GUI startup when available.
-- A Windows release zip can be built with `build_release_package.ps1`.
-- A bundled Windows executable zip can be built with `build_windows_exe.ps1`.
-- Sidecar naming follows Grimmory conventions:
-  - `BookName.metadata.json`
-  - `BookName.cover.jpg`
-- The original external cover image is preserved.
-
-## Validation Notes
-
-- `py_compile` passes in the current workspace.
-- Full `unittest` execution is currently blocked in this environment by temp-directory permission issues, so tests should be rerun in a normal local shell or CI environment before a tagged production release.
