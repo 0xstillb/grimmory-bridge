@@ -1048,6 +1048,52 @@ def normalize_pdf_info(reader: PdfReader) -> dict[str, str]:
     return result
 
 
+def _remove_stale_xmp_objects(writer: PdfWriter) -> None:
+    """Remove all Metadata stream objects except the one referenced by the catalog.
+
+    PDFs produced by tools like Foxit PhantomPDF often contain multiple XMP
+    Metadata streams (from incremental saves or form-field objects).  When we
+    clone the document and set ``writer.xmp_metadata``, pypdf writes a *new*
+    Metadata object and points the catalog at it, but the orphaned old objects
+    stay in the file.  PDFium (used by Grimmory's backend) may read one of
+    those stale, empty XMP packets instead of the catalog one, causing series
+    name / ISBN / etc. to appear blank.
+
+    This helper walks every indirect object in the writer and nullifies any
+    ``/Type /Metadata`` stream that is NOT the catalog's ``/Metadata`` ref.
+    """
+    from pypdf.generic import (
+        ArrayObject,
+        DictionaryObject,
+        IndirectObject,
+        NullObject,
+        StreamObject,
+    )
+
+    catalog = writer._root_object
+    catalog_meta_ref = catalog.get("/Metadata")
+    catalog_meta_idnum = None
+    if isinstance(catalog_meta_ref, IndirectObject):
+        catalog_meta_idnum = catalog_meta_ref.idnum
+
+    for i in range(len(writer._objects)):
+        obj = writer._objects[i]
+        if obj is None or not isinstance(obj, StreamObject):
+            continue
+        if not isinstance(obj, DictionaryObject):
+            continue
+        obj_type = obj.get("/Type")
+        if obj_type is None:
+            continue
+        type_str = str(obj_type)
+        if type_str != "/Metadata":
+            continue
+        obj_idnum = i + 1
+        if catalog_meta_idnum is not None and obj_idnum == catalog_meta_idnum:
+            continue
+        writer._objects[i] = NullObject()
+
+
 def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
     reader = PdfReader(BytesIO(book_path.read_bytes()))
     writer = PdfWriter()
@@ -1073,6 +1119,8 @@ def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
     if current_xmp is not None and getattr(current_xmp, "stream", None) is not None:
         current_xmp_bytes = current_xmp.stream.get_data()
     writer.xmp_metadata = new_xmp
+
+    _remove_stale_xmp_objects(writer)
 
     changed = info != normalize_pdf_info(reader) or current_xmp_bytes != new_xmp
     if not changed:

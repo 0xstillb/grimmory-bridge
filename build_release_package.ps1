@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = "1.0.0"
+$version = "1.1.0"
 $packageName = "Grimmory-Bridge-$version-windows"
 $distRoot = Join-Path $root "dist"
 $packageRoot = Join-Path $distRoot $packageName
