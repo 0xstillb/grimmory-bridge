@@ -1,2 +1,3 @@
 lxml
 pypdf
+cryptography>=3.1

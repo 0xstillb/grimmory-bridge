@@ -34,6 +34,14 @@ def create_sample_pdf(path: Path) -> None:
         writer.write(handle)
 
 
+def create_sample_encrypted_pdf(path: Path, password: str) -> None:
+    writer = embedder.PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.encrypt(password, algorithm="AES-256")
+    with path.open("wb") as handle:
+        writer.write(handle)
+
+
 def create_sample_epub(path: Path) -> None:
     container_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -143,6 +151,38 @@ class EmbeddedMetadataTests(unittest.TestCase):
             self.assertIn('name="calibre:series"', opf_text)
             self.assertIn('name="calibre:series_index"', opf_text)
             self.assertIn("Series Name", opf_text)
+
+    def test_write_pdf_metadata_encrypted_round_trip(self) -> None:
+        metadata = {
+            "title": "AES Book",
+            "authors": ["Author Locked"],
+            "description": "Encrypted metadata update",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Encrypted.pdf"
+            create_sample_encrypted_pdf(pdf_path, "secret123")
+
+            changed = embedder.write_pdf_metadata(
+                pdf_path,
+                metadata,
+                {"pdf_password": "secret123", "pdf_reencrypt": True, "pdf_encrypt_algorithm": "AES-256"},
+            )
+
+            self.assertTrue(changed)
+            reader = embedder.PdfReader(str(pdf_path))
+            self.assertTrue(reader.is_encrypted)
+            self.assertGreater(int(reader.decrypt("secret123")), 0)
+            self.assertEqual(reader.metadata.get("/Title"), "AES Book")
+            self.assertEqual(reader.metadata.get("/Author"), "Author Locked")
+
+    def test_write_pdf_metadata_encrypted_requires_password(self) -> None:
+        metadata = {"title": "AES Book"}
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Encrypted.pdf"
+            create_sample_encrypted_pdf(pdf_path, "secret123")
+
+            with self.assertRaises(RuntimeError):
+                embedder.write_pdf_metadata(pdf_path, metadata, {})
 
     def test_compatibility_report_includes_target_sections(self) -> None:
         metadata = {

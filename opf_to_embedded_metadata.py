@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from zipfile import ZipInfo
 from ctypes import wintypes
 
@@ -39,10 +39,12 @@ def configure_console_output() -> None:
 try:
     from lxml import etree
     from pypdf import PdfReader, PdfWriter
+    from pypdf.errors import DependencyError
 except ModuleNotFoundError:
     _bootstrap_bundled_python_packages()
     from lxml import etree
     from pypdf import PdfReader, PdfWriter
+    from pypdf.errors import DependencyError
 
 from opf_to_grimmory_json import (
     build_sidecar_payload as build_grimmory_sidecar_payload,
@@ -1094,8 +1096,91 @@ def _remove_stale_xmp_objects(writer: PdfWriter) -> None:
         writer._objects[i] = NullObject()
 
 
-def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
+def _password_candidates_from_opts(opts: dict[str, Any] | None) -> list[str]:
+    if not isinstance(opts, dict):
+        opts = {}
+    candidates: list[str] = []
+    for key in ("pdf_password", "pdf_user_password", "password"):
+        value = opts.get(key)
+        if isinstance(value, str):
+            text = value
+            if text and text not in candidates:
+                candidates.append(text)
+    list_value = opts.get("pdf_passwords")
+    if isinstance(list_value, list):
+        for item in list_value:
+            if not isinstance(item, str):
+                continue
+            text = item
+            if text and text not in candidates:
+                candidates.append(text)
+    if "" not in candidates:
+        candidates.append("")
+    return candidates
+
+
+def _infer_reencrypt_algorithm(reader: PdfReader) -> str | None:
+    encrypt = reader.trailer.get("/Encrypt")
+    if not hasattr(encrypt, "get"):
+        return None
+
+    try:
+        v = int(encrypt.get("/V", 0))
+    except Exception:
+        v = 0
+    try:
+        length = int(encrypt.get("/Length", 128))
+    except Exception:
+        length = 128
+
+    if v >= 5:
+        return "AES-256"
+
+    if v == 4:
+        cf = encrypt.get("/CF")
+        if hasattr(cf, "get"):
+            stdcf = cf.get("/StdCF")
+            if hasattr(stdcf, "get"):
+                cfm = str(stdcf.get("/CFM", ""))
+                if cfm == "/AESV3":
+                    return "AES-256"
+                if cfm == "/AESV2":
+                    return "AES-128"
+        return "RC4-128"
+
+    if length <= 40:
+        return "RC4-40"
+    return "RC4-128"
+
+
+def _decrypt_reader_if_needed(reader: PdfReader, opts: dict[str, Any] | None) -> str | None:
+    if not reader.is_encrypted:
+        return None
+
+    last_error: Exception | None = None
+    for password in _password_candidates_from_opts(opts):
+        try:
+            result = reader.decrypt(password)
+        except DependencyError as exc:
+            raise RuntimeError(
+                "Encrypted PDF requires cryptography>=3.1 for AES decrypt support"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            continue
+        if int(result) > 0:
+            return password
+
+    if last_error is not None:
+        raise RuntimeError(f"Could not decrypt PDF: {last_error}") from last_error
+    raise RuntimeError("Could not decrypt PDF: password required or invalid")
+
+
+def write_pdf_metadata(book_path: Path, metadata: dict, opts: dict[str, Any] | None = None) -> bool:
     reader = PdfReader(BytesIO(book_path.read_bytes()))
+    original_encrypted = bool(getattr(reader, "is_encrypted", False))
+    unlocked_with = _decrypt_reader_if_needed(reader, opts)
+
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
 
@@ -1121,6 +1206,40 @@ def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
     writer.xmp_metadata = new_xmp
 
     _remove_stale_xmp_objects(writer)
+
+    if original_encrypted:
+        reencrypt = True
+        if isinstance(opts, dict):
+            reencrypt = bool(opts.get("pdf_reencrypt", True))
+        if reencrypt:
+            user_password: str | None = None
+            owner_password: str | None = None
+            algorithm: str | None = None
+            if isinstance(opts, dict):
+                user_value = opts.get("pdf_user_password", opts.get("pdf_password"))
+                if isinstance(user_value, str):
+                    user_password = user_value
+                owner_value = opts.get("pdf_owner_password")
+                if isinstance(owner_value, str):
+                    owner_password = owner_value
+                algo_value = opts.get("pdf_encrypt_algorithm")
+                if isinstance(algo_value, str) and algo_value.strip():
+                    algorithm = algo_value.strip()
+            if not user_password:
+                user_password = unlocked_with if isinstance(unlocked_with, str) else ""
+            if algorithm is None:
+                algorithm = _infer_reencrypt_algorithm(reader)
+            try:
+                # pypdf may clone legacy /ID values as strings; force regeneration.
+                writer._ID = None
+                if algorithm:
+                    writer.encrypt(user_password=user_password, owner_password=owner_password, algorithm=algorithm)
+                else:
+                    writer.encrypt(user_password=user_password, owner_password=owner_password)
+            except DependencyError as exc:
+                raise RuntimeError(
+                    "Re-encrypt failed: cryptography>=3.1 is required for AES encryption"
+                ) from exc
 
     changed = info != normalize_pdf_info(reader) or current_xmp_bytes != new_xmp
     if not changed:
