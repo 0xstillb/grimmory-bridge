@@ -15,6 +15,8 @@ use std::{
 };
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RpcErrorPayload {
@@ -36,6 +38,11 @@ struct RpcInner {
 #[derive(Clone)]
 struct RpcState {
     inner: Arc<RpcInner>,
+}
+
+struct RpcRuntime {
+    app: tauri::AppHandle,
+    state: Mutex<Option<RpcState>>,
 }
 
 impl RpcState {
@@ -85,6 +92,25 @@ impl RpcState {
                 Err("RPC timeout waiting for sidecar response".to_string())
             }
         }
+    }
+}
+
+impl RpcRuntime {
+    fn call(&self, method: String, params: Value) -> Result<Value, String> {
+        let state = {
+            let mut slot = self
+                .state
+                .lock()
+                .map_err(|_| "rpc runtime lock poisoned".to_string())?;
+            if let Some(state) = slot.as_ref() {
+                state.clone()
+            } else {
+                let spawned = spawn_sidecar(self.app.clone())?;
+                *slot = Some(spawned.clone());
+                spawned
+            }
+        };
+        state.call(method, params)
     }
 }
 
@@ -180,6 +206,12 @@ fn spawn_sidecar(app: tauri::AppHandle) -> Result<RpcState, String> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        // Prevent a separate console window from flashing/opening for the Python sidecar.
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
 
     let mut child = command
         .spawn()
@@ -241,7 +273,7 @@ fn spawn_sidecar(app: tauri::AppHandle) -> Result<RpcState, String> {
 }
 
 #[tauri::command]
-fn rpc_call(method: String, params: Value, state: State<'_, RpcState>) -> Result<Value, String> {
+fn rpc_call(method: String, params: Value, state: State<'_, RpcRuntime>) -> Result<Value, String> {
     state.call(method, params)
 }
 
@@ -263,17 +295,22 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            let rpc_state = spawn_sidecar(app.handle().clone())?;
-            app.manage(rpc_state);
+            app.manage(RpcRuntime {
+                app: app.handle().clone(),
+                state: Mutex::new(None),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![rpc_call, rpc_subscribe, pick_folder])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                let inner = window.try_state::<RpcState>().map(|state| state.inner.clone());
-                if let Some(inner) = inner {
-                    if let Ok(mut child) = inner.child.lock() {
-                        let _ = child.kill();
+                if let Some(runtime) = window.try_state::<RpcRuntime>() {
+                    if let Ok(mut slot) = runtime.state.lock() {
+                        if let Some(state) = slot.take() {
+                            if let Ok(mut child) = state.inner.child.lock() {
+                                let _ = child.kill();
+                            }
+                        }
                     }
                 }
             }

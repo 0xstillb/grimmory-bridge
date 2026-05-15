@@ -14,3 +14,42 @@ UI_REFINEMENT_HANDOFF.md
 
 .DS_Store
 Thumbs.db
+
+node_modules/
+.pnpm-store/
+src-tauri/target/
+
+# Runtime / local state
+runs/
+work/
+uploads/
+src-tauri/runs/
+python/.build/
+python/.spec/
+
+# Local env / secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Generated signatures / updater artifacts
+*.sig
+latest.json
+
+# Book backup artifacts
+*.bak
+
+# Local design/mock files
+.design-canvas.state.json
+*-screens.jsx
+*-data.jsx
+design-canvas.jsx
+icons.jsx
+tweaks-panel.jsx
+Grimmory Bridge.html
+Implementation Plan.html
