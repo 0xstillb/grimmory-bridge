@@ -21,7 +21,6 @@ jobs:
             os: macos-latest
             tauri_args: --target universal-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
-            sidecar_triple: universal-apple-darwin
           - name: Windows x64
             os: windows-latest
             tauri_args: --target x86_64-pc-windows-msvc
@@ -58,7 +57,14 @@ jobs:
       - name: Install Python build deps
         run: python -m pip install --upgrade pip pyinstaller cryptography -r requirements.txt
 
-      - name: Build sidecar
+      - name: Build sidecar (macOS universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          python scripts/build-sidecar.py --triple aarch64-apple-darwin
+          python scripts/build-sidecar.py --triple x86_64-apple-darwin
+
+      - name: Build sidecar (Windows x64)
+        if: matrix.os == 'windows-latest'
         run: python scripts/build-sidecar.py --triple ${{ matrix.sidecar_triple }}
 
       - name: Build and upload release assets

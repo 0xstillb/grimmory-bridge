@@ -1,6 +1,6 @@
 [package]
 name = "grimmory-bridge"
-version = "0.1.5"
+version = "0.1.6"
 description = "Desktop bridge for Grimmory metadata workflows"
 authors = ["Grimmory Bridge Team"]
 edition = "2021"
