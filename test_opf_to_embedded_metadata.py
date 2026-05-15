@@ -110,6 +110,61 @@ class EmbeddedMetadataTests(unittest.TestCase):
             self.assertIn("<booklore:seriesNumber>2</booklore:seriesNumber>", first_description)
             self.assertIn("<xmpidq:Scheme>isbn13</xmpidq:Scheme>", first_description)
 
+    def test_write_pdf_metadata_removes_orphaned_stale_xmp_streams(self) -> None:
+        metadata = {
+            "title": "Fresh Title",
+            "authors": ["Author A"],
+            "publisher": "Kadokawa",
+            "publishedDate": "2024-05-17",
+            "description": "Example description",
+            "language": "th",
+            "categories": ["Fantasy"],
+            "isbn13": "9786161234567",
+            "series": {"name": "Series Name", "number": 2},
+        }
+        stale_marker = "STALE_XMP_SENTINEL_12345"
+        stale_xmp = (
+            "<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+            "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+            "<rdf:Description>"
+            f"<dc:title xmlns:dc='http://purl.org/dc/elements/1.1/'>{stale_marker}</dc:title>"
+            "</rdf:Description>"
+            "</rdf:RDF>"
+            "</x:xmpmeta>"
+        ).encode("utf-8")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "Book Title.pdf"
+            create_sample_pdf(pdf_path)
+
+            reader = embedder.PdfReader(str(pdf_path))
+            writer = embedder.PdfWriter()
+            writer.clone_document_from_reader(reader)
+            writer.xmp_metadata = embedder.build_pdf_xmp({"title": "Old Title"})
+
+            from pypdf.generic import DecodedStreamObject, NameObject
+
+            stale_stream = DecodedStreamObject()
+            stale_stream.set_data(stale_xmp)
+            stale_stream[NameObject("/Type")] = NameObject("/Metadata")
+            writer._add_object(stale_stream)
+
+            with pdf_path.open("wb") as handle:
+                writer.write(handle)
+
+            before_bytes = pdf_path.read_bytes()
+            self.assertIn(stale_marker.encode("utf-8"), before_bytes)
+
+            changed = embedder.write_pdf_metadata(pdf_path, metadata)
+            self.assertTrue(changed)
+
+            after_bytes = pdf_path.read_bytes()
+            self.assertNotIn(stale_marker.encode("utf-8"), after_bytes)
+
+            updated_reader = embedder.PdfReader(str(pdf_path))
+            updated_xmp = updated_reader.xmp_metadata.stream.get_data().decode("utf-8", errors="ignore")
+            self.assertIn("Fresh Title", updated_xmp)
+
     def test_write_epub_metadata_updates_internal_opf(self) -> None:
         metadata = {
             "title": "Book Title",

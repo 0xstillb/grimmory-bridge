@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grimmory-bridge"
+version = "0.1.0"
+description = "Grimmory Bridge Python modules"
+requires-python = ">=3.11"
+dependencies = [
+  "lxml",
+  "pypdf",
+  "cryptography>=3.1",
+]
+
+[tool.setuptools]
+packages = ["grimmory_bridge"]

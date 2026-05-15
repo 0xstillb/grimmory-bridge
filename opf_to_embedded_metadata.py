@@ -1094,10 +1094,173 @@ def _remove_stale_xmp_objects(writer: PdfWriter) -> None:
         writer._objects[i] = NullObject()
 
 
-def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
-    reader = PdfReader(BytesIO(book_path.read_bytes()))
-    writer = PdfWriter()
-    writer.clone_document_from_reader(reader)
+def _password_candidates(opts: dict) -> list[str]:
+    candidates: list[str] = []
+    for key in ("pdf_password", "pdf_user_password", "pdf_owner_password"):
+        if key not in opts:
+            continue
+        value = opts.get(key)
+        if value is None:
+            continue
+        text = str(value)
+        if text not in candidates:
+            candidates.append(text)
+    extra = opts.get("pdf_passwords")
+    if isinstance(extra, list):
+        for value in extra:
+            text = str(value)
+            if text not in candidates:
+                candidates.append(text)
+    return candidates
+
+
+def _decrypt_reader(reader: PdfReader, opts: dict) -> tuple[bool, str | None]:
+    if not reader.is_encrypted:
+        return False, None
+
+    passwords = _password_candidates(opts)
+    if not passwords:
+        raise RuntimeError("Unable to decrypt PDF: password required for encrypted file")
+
+    last_error: Exception | None = None
+    for password in passwords:
+        try:
+            status = int(reader.decrypt(password))
+        except Exception as exc:
+            last_error = exc
+            continue
+        if status > 0:
+            return True, password
+
+    if last_error is not None and "cryptography" in str(last_error).lower():
+        raise RuntimeError("Unable to decrypt PDF AES stream: install cryptography>=3.1") from last_error
+    raise RuntimeError("Unable to decrypt PDF with provided password(s)")
+
+
+def _infer_reader_encrypt_algorithm(reader: PdfReader) -> str | None:
+    encrypt_dict = reader.trailer.get("/Encrypt")
+    if not encrypt_dict or not hasattr(encrypt_dict, "get"):
+        return None
+
+    cfm = None
+    crypt_filter = encrypt_dict.get("/CF")
+    stm_filter = encrypt_dict.get("/StmF")
+    if crypt_filter and hasattr(crypt_filter, "get"):
+        selected = None
+        if stm_filter and stm_filter in crypt_filter:
+            selected = crypt_filter.get(stm_filter)
+        elif "/StdCF" in crypt_filter:
+            selected = crypt_filter.get("/StdCF")
+        elif len(crypt_filter) > 0:
+            selected = next(iter(crypt_filter.values()))
+        if selected and hasattr(selected, "get"):
+            cfm = str(selected.get("/CFM") or "")
+
+    revision = encrypt_dict.get("/R")
+    length = encrypt_dict.get("/Length")
+
+    if cfm == "/AESV2":
+        return "AES-128"
+    if cfm == "/AESV3":
+        return "AES-256"
+    if cfm == "/V2":
+        return "RC4-128"
+
+    if revision == 2:
+        return "RC4-40"
+    if revision == 3:
+        return "RC4-128"
+    if revision == 4:
+        if int(length or 128) <= 40:
+            return "RC4-40"
+        return "RC4-128"
+    if revision == 5:
+        return "AES-256-R5"
+    if revision == 6:
+        return "AES-256"
+    return None
+
+
+def _reencrypt_writer(
+    writer: PdfWriter,
+    was_encrypted: bool,
+    decrypt_password: str | None,
+    opts: dict,
+    source_algorithm: str | None = None,
+) -> None:
+    if not was_encrypted:
+        return
+    if not bool(opts.get("pdf_reencrypt", True)):
+        return
+
+    fallback_password = decrypt_password or str(opts.get("pdf_password") or "")
+    user_password = str(opts.get("pdf_user_password") or fallback_password)
+
+    owner_value = opts.get("pdf_owner_password")
+    owner_password = str(owner_value) if owner_value not in (None, "") else None
+    if owner_password is None and fallback_password:
+        owner_password = fallback_password
+
+    algorithm = str(opts.get("pdf_encrypt_algorithm") or "").strip()
+    if not algorithm and source_algorithm:
+        algorithm = source_algorithm
+
+    # pypdf may retain trailer /ID values as text when cloned from encrypted PDFs.
+    # Convert to byte strings so encryption key derivation stays stable.
+    try:
+        from pypdf.generic import ArrayObject, ByteStringObject
+
+        file_ids = getattr(writer, "_ID", None)
+        if isinstance(file_ids, list):
+            normalized_ids = []
+            for value in file_ids:
+                text = str(value)
+                if len(text) == 32 and all(ch in "0123456789abcdefABCDEF" for ch in text):
+                    normalized_ids.append(ByteStringObject(bytes.fromhex(text)))
+                else:
+                    normalized_ids.append(ByteStringObject(text.encode("utf-8", errors="ignore")))
+            writer._ID = ArrayObject(normalized_ids)
+    except Exception:
+        pass
+
+    try:
+        if algorithm:
+            writer.encrypt(user_password=user_password, owner_password=owner_password, algorithm=algorithm)
+        else:
+            writer.encrypt(user_password=user_password, owner_password=owner_password)
+    except TypeError:
+        # Backward compatibility for pypdf versions without keyword-only algorithm.
+        if algorithm:
+            upper = algorithm.upper()
+            if upper == "RC4-40":
+                writer.encrypt(user_password, owner_password=owner_password, use_128bit=False)
+            elif upper == "RC4-128":
+                writer.encrypt(user_password, owner_password=owner_password, use_128bit=True)
+            else:
+                raise RuntimeError(
+                    "Selected PDF encryption algorithm is not supported by this pypdf version"
+                ) from None
+        else:
+            writer.encrypt(user_password, owner_password=owner_password)
+    except Exception as exc:
+        message = str(exc)
+        if "cryptography" in message.lower():
+            raise RuntimeError("Unable to encrypt PDF AES stream: install cryptography>=3.1") from exc
+        raise
+
+
+def write_pdf_metadata(book_path: Path, metadata: dict, opts: dict | None = None) -> bool:
+    opts = opts or {}
+    try:
+        reader = PdfReader(BytesIO(book_path.read_bytes()))
+        was_encrypted, decrypt_password = _decrypt_reader(reader, opts)
+        source_algorithm = _infer_reader_encrypt_algorithm(reader)
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+    except Exception as exc:
+        if "cryptography" in str(exc).lower():
+            raise RuntimeError("Unable to process AES-encrypted PDF: install cryptography>=3.1") from exc
+        raise
 
     info = normalize_pdf_info(reader)
     update_info_value(info, "/Title", metadata.get("title"))
@@ -1125,6 +1288,8 @@ def write_pdf_metadata(book_path: Path, metadata: dict) -> bool:
     changed = info != normalize_pdf_info(reader) or current_xmp_bytes != new_xmp
     if not changed:
         return False
+
+    _reencrypt_writer(writer, was_encrypted, decrypt_password, opts, source_algorithm=source_algorithm)
 
     with tempfile.NamedTemporaryFile(
         delete=False,
