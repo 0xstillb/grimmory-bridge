@@ -62,6 +62,7 @@ jobs:
         run: |
           python scripts/build-sidecar.py --triple aarch64-apple-darwin
           python scripts/build-sidecar.py --triple x86_64-apple-darwin
+          cp src-tauri/binaries/grimmory-bridge-py-aarch64-apple-darwin src-tauri/binaries/grimmory-bridge-py-universal-apple-darwin
 
       - name: Build sidecar (Windows x64)
         if: matrix.os == 'windows-latest'
